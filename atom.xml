@@ -1,0 +1,486 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>乔尾巴的技术屋</title>
+  
+  <link href="/atom.xml" rel="self"/>
+  
+  <link href="http://qiaoweiba.com/"/>
+  <updated>2017-08-28T14:16:11.490Z</updated>
+  <id>http://qiaoweiba.com/</id>
+  
+  <author>
+    <name>qiaoweiba</name>
+    
+  </author>
+  
+  <generator uri="http://hexo.io/">Hexo</generator>
+  
+  <entry>
+    <title>HashMap源码(Java 8)</title>
+    <link href="http://qiaoweiba.com/2017/08/28/1/"/>
+    <id>http://qiaoweiba.com/2017/08/28/1/</id>
+    <published>2017-08-28T03:56:32.000Z</published>
+    <updated>2017-08-28T14:16:11.490Z</updated>
+    
+    <content type="html"><![CDATA[<h1 id="HashMap源码分析"><a href="#HashMap源码分析" class="headerlink" title="HashMap源码分析"></a>HashMap源码分析</h1><p>Map作为一种典型的数据结构，是存储key-value键值对的集合类，<code>key</code>可以为null但必须是唯一的。 HashMap实现了Map接口，因此也继承了这一特性。下面我们来分析一下HashMap的主要源码和实现过程，以便对HashMap有更深入的理解。<br>在Java 8之前的实现中是用链表解决冲突的，在产生碰撞的情况下，进行get时，两步的时间复杂度是O(1)+O(n)。因此，当碰撞很厉害的时候n很大，O(n)的速度显然是影响速度的。因此在Java 8中，利用<code>红黑树</code>替换链表，这样复杂度就变成了O(1)+O(logn)了，这样在n很大的时候，能够比较理想的解决这个问题。</p>
+<h2 id="声明"><a href="#声明" class="headerlink" title="声明"></a>声明</h2><pre><code>public class HashMap&lt;K,V&gt; extends AbstractMap&lt;K,V&gt;
+implements Map&lt;K,V&gt;, Cloneable, Serializable
+</code></pre><p>HashMap实现了Map接口，继承了AbstractMap。AbstractMap实现了Map的主要抽象函数，从而减少了HashMap实现接口的工作量。<br><a id="more"></a></p>
+<h2 id="属性"><a href="#属性" class="headerlink" title="属性"></a>属性</h2><pre><code>static final int DEFAULT_INITIAL_CAPACITY = 1 &lt;&lt; 4; // 默认初始容量，即桶的数量，16
+
+static final int MAXIMUM_CAPACITY = 1 &lt;&lt; 30;// 最大容量
+
+static final float DEFAULT_LOAD_FACTOR = 0.75f;// 默认装载因子
+
+static final int TREEIFY_THRESHOLD = 8; //桶中的元素大于此阀值，且HashMap中所有元素总数大于MIN_TREEIFY_CAPACITY时，单向链表转成树（红黑树）
+
+static final int UNTREEIFY_THRESHOLD = 6; //当桶中的元素小于此阀值时，树转成单向链表
+
+static final int MIN_TREEIFY_CAPACITY = 64; //HashMap中所有元素总数小于此值时，即使桶中元素超过TREEIFY_THRESHOLD也不转成树
+
+transient Node&lt;K,V&gt;[] table; //桶
+
+transient Set&lt;Map.Entry&lt;K,V&gt;&gt; entrySet;
+
+transient int size;
+
+transient int modCount;
+
+int threshold;
+
+final float loadFactor;
+</code></pre><h2 id="构造函数"><a href="#构造函数" class="headerlink" title="构造函数"></a>构造函数</h2><pre><code>//指定初始容量和装载因子
+public HashMap(int initialCapacity, float loadFactor) {
+    if (initialCapacity &lt; 0)
+        throw new IllegalArgumentException(&quot;Illegal initial capacity: &quot; +
+                                           initialCapacity);
+    if (initialCapacity &gt; MAXIMUM_CAPACITY)
+        initialCapacity = MAXIMUM_CAPACITY;
+    if (loadFactor &lt;= 0 || Float.isNaN(loadFactor))
+        throw new IllegalArgumentException(&quot;Illegal load factor: &quot; +
+                                           loadFactor);
+    this.loadFactor = loadFactor;
+    this.threshold = tableSizeFor(initialCapacity);
+}
+
+//指定加载因子
+public HashMap(int initialCapacity) {
+    this(initialCapacity, DEFAULT_LOAD_FACTOR);
+}
+
+//默认构造方法，装载因子为默认值0.75
+public HashMap() {
+    this.loadFactor = DEFAULT_LOAD_FACTOR; // all other fields defaulted
+}
+
+//使用一个Map来初始化一个HashMap
+public HashMap(Map&lt;? extends K, ? extends V&gt; m) {
+    this.loadFactor = DEFAULT_LOAD_FACTOR;
+    putMapEntries(m, false);
+}
+</code></pre><h2 id="put方法"><a href="#put方法" class="headerlink" title="put方法"></a>put方法</h2><p>put方法大致思路如下：</p>
+<ol>
+<li>对key的hashCode()做hash，然后再计算index;</li>
+<li>如果没碰撞直接放到bucket里；</li>
+<li>如果碰撞了，以链表的形式存在buckets后；</li>
+<li>如果碰撞导致链表过长(大于等于TREEIFY_THRESHOLD)，就把链表转换成红黑树；</li>
+<li>如果节点已经存在就替换old value(保证key的唯一性)</li>
+<li>如果bucket满了(超过load factor*current capacity)，就要resize。</li>
+</ol>
+<p>具体代码的实现如下：</p>
+<pre><code>public V put(K key, V value) {
+    // 对key的hashCode()做hash
+    return putVal(hash(key), key, value, false, true);
+}
+
+final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
+               boolean evict) {
+    Node&lt;K,V&gt;[] tab; Node&lt;K,V&gt; p; int n, i;
+    // tab为空则创建
+    if ((tab = table) == null || (n = tab.length) == 0)
+        n = (tab = resize()).length;
+    // 计算index，并对null做处理
+    if ((p = tab[i = (n - 1) &amp; hash]) == null)
+        tab[i] = newNode(hash, key, value, null);
+    else {
+        Node&lt;K,V&gt; e; K k;
+        // 直接命中节点
+        if (p.hash == hash &amp;&amp;
+            ((k = p.key) == key || (key != null &amp;&amp; key.equals(k))))
+            e = p;
+        // 该链为树
+        else if (p instanceof TreeNode)
+            e = ((TreeNode&lt;K,V&gt;)p).putTreeVal(this, tab, hash, key, value);
+        // 该链为链表
+        else {
+            for (int binCount = 0; ; ++binCount) {
+                // 没有找到，则新建节点加入链表中
+                if ((e = p.next) == null) {
+                    p.next = newNode(hash, key, value, null);
+                    if (binCount &gt;= TREEIFY_THRESHOLD - 1) // -1 for 1st
+                        treeifyBin(tab, hash);
+                    break;
+                }
+                if (e.hash == hash &amp;&amp;
+                    ((k = e.key) == key || (key != null &amp;&amp; key.equals(k))))
+                    break;
+                p = e;
+            }
+        }
+        // 找到则覆盖原值，并将原值返回
+        if (e != null) { // existing mapping for key
+            V oldValue = e.value;
+            if (!onlyIfAbsent || oldValue == null)
+                e.value = value;
+            afterNodeAccess(e);
+            return oldValue;
+        }
+    }
+    ++modCount;
+    // 容量超过load factor*current capacity，扩容
+    if (++size &gt; threshold)
+        resize();
+    afterNodeInsertion(evict);
+    return null;
+}
+</code></pre><h2 id="get方法"><a href="#get方法" class="headerlink" title="get方法"></a>get方法</h2><p>get方法大致思路如下：</p>
+<ol>
+<li><p>bucket里直接命中,则返回该处的值；</p>
+</li>
+<li><p>如果有冲突，则通过key.equals(k)去查找对应的entry:</p>
+<blockquote>
+<p>若为树，则在树中通过key.equals(k)查找，O(logn)；<br>若为链表，则在链表中通过key.equals(k)查找，O(n)。</p>
+</blockquote>
+</li>
+</ol>
+<p>具体代码的实现如下：</p>
+<pre><code>public V get(Object key) {
+    Node&lt;K,V&gt; e;
+    return (e = getNode(hash(key), key)) == null ? null : e.value;
+}
+
+final Node&lt;K,V&gt; getNode(int hash, Object key) {
+    Node&lt;K,V&gt;[] tab; Node&lt;K,V&gt; first, e; int n; K k;
+    if ((tab = table) != null &amp;&amp; (n = tab.length) &gt; 0 &amp;&amp;
+        (first = tab[(n - 1) &amp; hash]) != null) {
+        // 直接命中
+        if (first.hash == hash &amp;&amp; // always check first node
+            ((k = first.key) == key || (key != null &amp;&amp; key.equals(k))))
+            return first;
+         // 未命中
+        if ((e = first.next) != null) {
+            //在树中查找
+            if (first instanceof TreeNode)
+                return ((TreeNode&lt;K,V&gt;)first).getTreeNode(hash, key);
+            //在链表中查找
+            do {
+                if (e.hash == hash &amp;&amp;
+                    ((k = e.key) == key || (key != null &amp;&amp; key.equals(k))))
+                    return e;
+            } while ((e = e.next) != null);
+        }
+    }
+    return null;
+}
+</code></pre><h2 id="resize方法"><a href="#resize方法" class="headerlink" title="resize方法"></a>resize方法</h2><pre><code>final Node&lt;K,V&gt;[] resize() {
+    Node&lt;K,V&gt;[] oldTab = table;
+    int oldCap = (oldTab == null) ? 0 : oldTab.length;
+    int oldThr = threshold;
+    int newCap, newThr = 0;
+    if (oldCap &gt; 0) {
+        // 容量超过最大值就不再扩容
+        if (oldCap &gt;= MAXIMUM_CAPACITY) {
+            threshold = Integer.MAX_VALUE;
+            return oldTab;
+        }
+        //没有超过最大值，就扩容为原来的2倍
+        else if ((newCap = oldCap &lt;&lt; 1) &lt; MAXIMUM_CAPACITY &amp;&amp;
+                 oldCap &gt;= DEFAULT_INITIAL_CAPACITY)
+            newThr = oldThr &lt;&lt; 1; // double threshold
+    }
+    else if (oldThr &gt; 0) // initial capacity was placed in threshold
+        newCap = oldThr;
+    else {               // zero initial threshold signifies using defaults
+        newCap = DEFAULT_INITIAL_CAPACITY;
+        newThr = (int)(DEFAULT_LOAD_FACTOR * DEFAULT_INITIAL_CAPACITY);
+    }
+    // 计算新的扩容上限
+    if (newThr == 0) {
+        float ft = (float)newCap * loadFactor;
+        newThr = (newCap &lt; MAXIMUM_CAPACITY &amp;&amp; ft &lt; (float)MAXIMUM_CAPACITY ?
+                  (int)ft : Integer.MAX_VALUE);
+    }
+    threshold = newThr;
+    @SuppressWarnings({&quot;rawtypes&quot;,&quot;unchecked&quot;})
+        Node&lt;K,V&gt;[] newTab = (Node&lt;K,V&gt;[])new Node[newCap];
+    table = newTab;
+    if (oldTab != null) {
+        // 把每个bucket都移动到新的buckets中
+        for (int j = 0; j &lt; oldCap; ++j) {
+            Node&lt;K,V&gt; e;
+            if ((e = oldTab[j]) != null) {
+                oldTab[j] = null;
+                if (e.next == null)
+                    newTab[e.hash &amp; (newCap - 1)] = e;
+                else if (e instanceof TreeNode)
+                    ((TreeNode&lt;K,V&gt;)e).split(this, newTab, j, oldCap);
+                else { // preserve order
+                    Node&lt;K,V&gt; loHead = null, loTail = null;
+                    Node&lt;K,V&gt; hiHead = null, hiTail = null;
+                    Node&lt;K,V&gt; next;
+                    do {
+                        next = e.next;
+                        // 扩容后仍为原索引
+                        if ((e.hash &amp; oldCap) == 0) {
+                            if (loTail == null)
+                                loHead = e;
+                            else
+                                loTail.next = e;
+                            loTail = e;
+                        }
+                        // 扩容后为原索引+oldCap
+                        else {
+                            if (hiTail == null)
+                                hiHead = e;
+                            else
+                                hiTail.next = e;
+                            hiTail = e;
+                        }
+                    } while ((e = next) != null);
+                    // 原索引放到bucket里
+                    if (loTail != null) {
+                        loTail.next = null;
+                        newTab[j] = loHead;
+                    }
+                    // 原索引+oldCap放到bucket里
+                    if (hiTail != null) {
+                        hiTail.next = null;
+                        newTab[j + oldCap] = hiHead;
+                    }
+                }
+            }
+        }
+    }
+    return newTab;
+}
+</code></pre><h2 id="hash函数的实现"><a href="#hash函数的实现" class="headerlink" title="hash函数的实现"></a>hash函数的实现</h2><p>在进行get和put的过程中，都需要计算下标，先对hashCode进行hash操作，然后再通过hash值进一步计算下标，hashCode()计算hash的代码如下：</p>
+<pre><code>static final int hash(Object key) {
+    int h;
+    return (key == null) ? 0 : (h = key.hashCode()) ^ (h &gt;&gt;&gt; 16);
+}
+</code></pre><p>可以看到这个函数大概的作用就是：高16bit不变，低16bit和高16bit做了一个异或。在设计hash函数时，由于table的长度n为2的幂，而计算下标的时候，是这样实现的(使用&amp;位操作，而非%求余)：</p>
+<pre><code>(n - 1) &amp; hash
+</code></pre><p>因此，设计者想了一个顾全大局的方法(综合考虑了速度、作用、质量)，就是把高16bit和低16bit异或了一下。设计者还解释到因为现在大多数的hashCode的分布已经很不错了，就算是发生了碰撞也用<code>O(logn)</code>的tree去做了。仅仅异或一下，既减少了系统的开销，也不会造成的因为高位没有参与下标的计算(table长度比较小时)，从而引起的碰撞。如果还是产生了频繁的碰撞，使用树来处理频繁的碰撞。</p>
+<h2 id="HashMap的常见问题"><a href="#HashMap的常见问题" class="headerlink" title="HashMap的常见问题"></a>HashMap的常见问题</h2><h3 id="1-HashMap的工作原理"><a href="#1-HashMap的工作原理" class="headerlink" title="1. HashMap的工作原理"></a>1. HashMap的工作原理</h3><p>通过hash的方法，通过put和get存储和获取对象。存储对象时，我们将K/V传给put方法时，它调用hashCode计算hash从而得到bucket位置，进一步存储，HashMap会根据当前bucket的占用情况自动调整容量(超过Load Facotr则resize为原来的2倍)。获取对象时，我们将K传给get，它调用hashCode计算hash从而得到bucket位置，并进一步调用equals()方法确定键值对。如果发生碰撞的时候，Hashmap通过链表将产生碰撞冲突的元素组织起来，在Java 8中，如果一个bucket中碰撞冲突的元素超过某个限制(默认是8)，则使用红黑树来替换链表，从而提高速度。</p>
+<h3 id="2-equals-和hashCode-在HashMap中的作用"><a href="#2-equals-和hashCode-在HashMap中的作用" class="headerlink" title="2. equals()和hashCode()在HashMap中的作用"></a>2. equals()和hashCode()在HashMap中的作用</h3><p>通过对key的hashCode()进行hashing，并计算下标( n-1 &amp; hash)，从而获得buckets的位置。如果产生碰撞，则利用key.equals()方法去链表或树中去查找对应的节点。</p>
+<h3 id="3-hash的实现原理及目的"><a href="#3-hash的实现原理及目的" class="headerlink" title="3. hash的实现原理及目的"></a>3. hash的实现原理及目的</h3><p>在Java 1.8的实现中，是通过hashCode()的高16位异或低16位实现的：(h = k.hashCode()) ^ (h &gt;&gt;&gt; 16)，主要是从速度、功效、质量来考虑的，这么做可以在bucket的n比较小的时候，也能保证考虑到高低bit都参与到hash的计算中，同时不会有太大的开销。</p>
+]]></content>
+    
+    <summary type="html">
+    
+      &lt;h1 id=&quot;HashMap源码分析&quot;&gt;&lt;a href=&quot;#HashMap源码分析&quot; class=&quot;headerlink&quot; title=&quot;HashMap源码分析&quot;&gt;&lt;/a&gt;HashMap源码分析&lt;/h1&gt;&lt;p&gt;Map作为一种典型的数据结构，是存储key-value键值对的集合类，&lt;code&gt;key&lt;/code&gt;可以为null但必须是唯一的。 HashMap实现了Map接口，因此也继承了这一特性。下面我们来分析一下HashMap的主要源码和实现过程，以便对HashMap有更深入的理解。&lt;br&gt;在Java 8之前的实现中是用链表解决冲突的，在产生碰撞的情况下，进行get时，两步的时间复杂度是O(1)+O(n)。因此，当碰撞很厉害的时候n很大，O(n)的速度显然是影响速度的。因此在Java 8中，利用&lt;code&gt;红黑树&lt;/code&gt;替换链表，这样复杂度就变成了O(1)+O(logn)了，这样在n很大的时候，能够比较理想的解决这个问题。&lt;/p&gt;
+&lt;h2 id=&quot;声明&quot;&gt;&lt;a href=&quot;#声明&quot; class=&quot;headerlink&quot; title=&quot;声明&quot;&gt;&lt;/a&gt;声明&lt;/h2&gt;&lt;pre&gt;&lt;code&gt;public class HashMap&amp;lt;K,V&amp;gt; extends AbstractMap&amp;lt;K,V&amp;gt;
+implements Map&amp;lt;K,V&amp;gt;, Cloneable, Serializable
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;HashMap实现了Map接口，继承了AbstractMap。AbstractMap实现了Map的主要抽象函数，从而减少了HashMap实现接口的工作量。&lt;br&gt;
+    
+    </summary>
+    
+    
+      <category term="java" scheme="http://qiaoweiba.com/tags/java/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>MarkDown笔记</title>
+    <link href="http://qiaoweiba.com/2017/08/27/1/"/>
+    <id>http://qiaoweiba.com/2017/08/27/1/</id>
+    <published>2017-08-27T12:18:00.000Z</published>
+    <updated>2017-08-28T09:30:14.254Z</updated>
+    
+    <content type="html"><![CDATA[<h1 id="段落、标题、区块代码"><a href="#段落、标题、区块代码" class="headerlink" title="段落、标题、区块代码"></a>段落、标题、区块代码</h1><p>Markdown 支持两种标题的语法，Setext 和 atx 形式。<br>Setext 形式是用底线的形式，利用 = （最高阶标题）和 - （第二阶标题），Atx 形式在行首插入 1 到 6 个 # ，对应到标题 1 到 6 阶。<br>区块引用则使用 ‘&gt;’ 角括号。</p>
+<h1 id="A-First-Level-Header"><a href="#A-First-Level-Header" class="headerlink" title="A First Level Header"></a>A First Level Header</h1><h2 id="A-Second-Level-Header"><a href="#A-Second-Level-Header" class="headerlink" title="A Second Level Header"></a>A Second Level Header</h2><a id="more"></a>
+<p>Now is the time for all good men to come to<br>the aid of their country. This is just a<br>regular paragraph.</p>
+<p>The quick brown fox jumped over the lazy<br>dog’s back.</p>
+<h3 id="Header-3"><a href="#Header-3" class="headerlink" title="Header 3"></a>Header 3</h3><blockquote>
+<p>This is a blockquote.</p>
+<p>This is the second paragraph in the blockquote.</p>
+<p>This is a blockquote with two paragraphs. Lorem ipsum dolor sit amet,<br>consectetuer adipiscing elit. Aliquam hendrerit mi posuere lectus.<br>Vestibulum enim wisi, viverra nec, fringilla in, laoreet vitae, risus.<br>This is the first level of quoting.</p>
+<blockquote>
+<p>This is nested blockquote.</p>
+</blockquote>
+<p>Back to the first level.</p>
+<blockquote>
+<h2 id="这是一个标题。"><a href="#这是一个标题。" class="headerlink" title="这是一个标题。"></a>这是一个标题。</h2></blockquote>
+<ol>
+<li>这是第一行列表项。</li>
+<li>这是第二行列表项。</li>
+</ol>
+<p>给出一些例子代码：</p>
+<pre><code>return shell_exec(&quot;echo $input | $markdown_script&quot;);
+</code></pre><h3 id="This-is-an-H3-in-a-blockquote"><a href="#This-is-an-H3-in-a-blockquote" class="headerlink" title="This is an H3 in a blockquote"></a>This is an H3 in a blockquote</h3></blockquote>
+<h1 id="修辞和强调"><a href="#修辞和强调" class="headerlink" title="修辞和强调"></a>修辞和强调</h1><p>星号和底线来标记需要强调的区段</p>
+<p>Some of these words <em>are emphasized</em>.<br><br>Some of these words <em>are emphasized also</em>.<br><br>Use two asterisks for <strong>strong emphasis</strong>.<br><br>Or, if you prefer, <strong>use two underscores instead</strong>.</p>
+<h1 id="列表"><a href="#列表" class="headerlink" title="列表"></a>列表</h1><ul>
+<li>Red</li>
+<li>Green</li>
+<li>Blue</li>
+<li>yellow</li>
+</ul>
+<hr>
+<ul>
+<li>Red</li>
+<li>Green</li>
+<li>Blue<ol>
+<li>Bird</li>
+<li>McHale</li>
+<li>Parish</li>
+</ol>
+</li>
+</ul>
+<hr>
+<ol>
+<li>Bird</li>
+<li>McHale</li>
+<li>Parish</li>
+<li>Bird</li>
+<li>McHale</li>
+<li>Parish</li>
+</ol>
+<h2 id=""><a href="#" class="headerlink" title="*"></a><em>*</em></h2><hr>
+<ol>
+<li><p>This is a list item with two paragraphs. Lorem ipsum dolor<br>sit amet, consectetuer adipiscing elit. Aliquam hendrerit<br>mi posuere lectus.</p>
+<p>Vestibulum enim wisi, viverra nec, fringilla in, laoreet<br>vitae, risus. Donec sit amet nisl. Aliquam semper ipsum<br>sit amet velit.</p>
+<ul>
+<li>A list item with a blockquote:</li>
+</ul>
+<blockquote>
+<p>This is a blockquote<br>inside a list item.</p>
+<ul>
+<li>一列表项包含一个列表区块：</li>
+</ul>
+</blockquote>
+<p>   &lt;代码写在这&gt;</p>
+</li>
+</ol>
+<ol>
+<li>What a great season.</li>
+<li>1986. What a great season.</li>
+</ol>
+<p>Here is an example of AppleScript:</p>
+<pre><code>tell application &quot;Foo&quot;
+    beep
+end tell
+
+&lt;div class=&quot;footer&quot;&gt;
+    &amp;copy; 2004 Foo Corporation
+&lt;/div&gt;
+</code></pre><h1 id="链接"><a href="#链接" class="headerlink" title="链接"></a>链接</h1><p>Markdown 支持两种形式的链接语法： 行内式和参考式两种形式。</p>
+<p>行内式：</p>
+<pre><code>This is [an example](http://example.com/ &quot;Title&quot;) inline link.
+</code></pre><p>参考式：               </p>
+<pre><code>This is [an example][id] reference-style link.
+[id]: http://example.com/  &quot;Optional Title Here&quot;
+</code></pre><p>如果你是要链接到同样主机的资源，你可以使用相对路径：</p>
+<pre><code>See my [About](/about/) page for details.
+</code></pre><p>链接内容定义的形式为：</p>
+<ul>
+<li>方括号（前面可以选择性地加上至多三个空格来缩进），里面输入链接文字</li>
+<li>接着一个冒号</li>
+<li>接着一个以上的空格或制表符</li>
+<li>接着链接的网址</li>
+<li>选择性地接着 title 内容，可以用单引号、双引号或是括弧包着</li>
+</ul>
+<p>下面这三种链接的定义都是相同：</p>
+<pre><code>[foo]: http://example.com/  &quot;Optional                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              Title Here&quot;
+[foo]: http://example.com/  &apos;Optional Title Here&apos;
+[foo]: http://example.com/  (Optional Title Here)    
+</code></pre><h1 id="公式"><a href="#公式" class="headerlink" title="公式"></a>公式</h1><p>$E=mc^2$<br><br>$\cos 2\theta = \cos^2 \theta - \sin^2 \theta = 2 \cos^2 \theta - 1$</p>
+]]></content>
+    
+    <summary type="html">
+    
+      &lt;h1 id=&quot;段落、标题、区块代码&quot;&gt;&lt;a href=&quot;#段落、标题、区块代码&quot; class=&quot;headerlink&quot; title=&quot;段落、标题、区块代码&quot;&gt;&lt;/a&gt;段落、标题、区块代码&lt;/h1&gt;&lt;p&gt;Markdown 支持两种标题的语法，Setext 和 atx 形式。&lt;br&gt;Setext 形式是用底线的形式，利用 = （最高阶标题）和 - （第二阶标题），Atx 形式在行首插入 1 到 6 个 # ，对应到标题 1 到 6 阶。&lt;br&gt;区块引用则使用 ‘&amp;gt;’ 角括号。&lt;/p&gt;
+&lt;h1 id=&quot;A-First-Level-Header&quot;&gt;&lt;a href=&quot;#A-First-Level-Header&quot; class=&quot;headerlink&quot; title=&quot;A First Level Header&quot;&gt;&lt;/a&gt;A First Level Header&lt;/h1&gt;&lt;h2 id=&quot;A-Second-Level-Header&quot;&gt;&lt;a href=&quot;#A-Second-Level-Header&quot; class=&quot;headerlink&quot; title=&quot;A Second Level Header&quot;&gt;&lt;/a&gt;A Second Level Header&lt;/h2&gt;
+    
+    </summary>
+    
+    
+  </entry>
+  
+  <entry>
+    <title>IntelliJQuickKey</title>
+    <link href="http://qiaoweiba.com/2017/08/15/1/"/>
+    <id>http://qiaoweiba.com/2017/08/15/1/</id>
+    <published>2017-08-15T13:40:24.000Z</published>
+    <updated>2017-08-28T09:31:46.034Z</updated>
+    
+    <content type="html"><![CDATA[<p>#IntelliJ快捷键</p>
+<p>IntelliJ号称最好用的Java编辑器，功能确实也够强大，配合上快捷键的使用，可以极大方的提高我们的开发效率。</p>
+<p>Ctrl+X 删除行<br>Ctrl+D 复制行<br>Ctrl+Shift+N 查找文件<br>Ctrl+Alt+L  格式化代码<br>Ctrl+Alt+O 优化导入的类和包<br>Alt+/ 自动补全代码 注：默认与输入法有冲突，在setting-&gt;keymap-&gt;main menu-&gt;code-&gt;complete code-&gt;basic<br>Ctrl+P 方法参数提示<br>Ctrl+H 显示类结构图<br>Ctrl+Q 显示注释文档<br><a id="more"></a><br>[b]Alt+1 快速打开或隐藏工程面板[/b]<br>F2 或Shift+F2 高亮错误或警告快速定位<br>代码标签输入完成后，按Tab，生成代码。<br>选中文本，按Ctrl+Shift+F7 ，高亮显示所有该文本，按Esc高亮消失。<br>Ctrl+W 选中代码，连续按会增大选择范围<br>Ctrl+Shift+W 取消选中代码，连续按会减小选择范围<br>选中文本，按Alt+F3 ，逐个往下查找相同文本，并高亮显示。<br>Ctrl+Up/Down 光标跳转到第一行或最后一行下<br>Ctrl+B 快速打开光标处的类或方法   </p>
+<p>Ctrl+Alt+S   设置<br>Ctrl+Alt+Shift+S   项目设置<br>Crtl+Shift+T 创建当前类对应的测试文件</p>
+]]></content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;#IntelliJ快捷键&lt;/p&gt;
+&lt;p&gt;IntelliJ号称最好用的Java编辑器，功能确实也够强大，配合上快捷键的使用，可以极大方的提高我们的开发效率。&lt;/p&gt;
+&lt;p&gt;Ctrl+X 删除行&lt;br&gt;Ctrl+D 复制行&lt;br&gt;Ctrl+Shift+N 查找文件&lt;br&gt;Ctrl+Alt+L  格式化代码&lt;br&gt;Ctrl+Alt+O 优化导入的类和包&lt;br&gt;Alt+/ 自动补全代码 注：默认与输入法有冲突，在setting-&amp;gt;keymap-&amp;gt;main menu-&amp;gt;code-&amp;gt;complete code-&amp;gt;basic&lt;br&gt;Ctrl+P 方法参数提示&lt;br&gt;Ctrl+H 显示类结构图&lt;br&gt;Ctrl+Q 显示注释文档&lt;br&gt;
+    
+    </summary>
+    
+    
+  </entry>
+  
+  <entry>
+    <title>JsDemo</title>
+    <link href="http://qiaoweiba.com/2017/08/14/1/"/>
+    <id>http://qiaoweiba.com/2017/08/14/1/</id>
+    <published>2017-08-14T12:18:00.000Z</published>
+    <updated>2017-08-14T12:19:12.971Z</updated>
+    
+    <content type="html"><![CDATA[<!-- 背景动画 -->
+<p><script type="text/javascript" src="/js/src/particle.js"></script><br><!-- 背景动画 --></p>
+<p><script type="text/javascript" src="/js/src/particle.js"></script><br><img src="/upload_images/1.jpg" alt=""></p>
+<blockquote class="blockquote-center">优秀的人，不是不合群，而是他们合群的人里面没有你</blockquote>
+]]></content>
+    
+    <summary type="html">
+    
+      &lt;!-- 背景动画 --&gt;
+&lt;p&gt;&lt;script type=&quot;text/javascript&quot; src=&quot;/js/src/particle.js&quot;&gt;&lt;/script&gt;&lt;br&gt;&lt;!-- 背景动画 --&gt;&lt;/p&gt;
+&lt;p&gt;&lt;script type=&quot;text/javascript&quot; s
+    
+    </summary>
+    
+    
+  </entry>
+  
+  <entry>
+    <title>Hello World</title>
+    <link href="http://qiaoweiba.com/2017/08/14/hello-world/"/>
+    <id>http://qiaoweiba.com/2017/08/14/hello-world/</id>
+    <published>2017-08-14T04:47:10.337Z</published>
+    <updated>2017-08-14T05:11:56.260Z</updated>
+    
+    <content type="html"><![CDATA[<p>Welcome to <a href="https://hexo.io/" target="_blank" rel="external">Hexo</a>! This is your very first post. Check <a href="https://hexo.io/docs/" target="_blank" rel="external">documentation</a> for more info. If you get any problems when using Hexo, you can find the answer in <a href="https://hexo.io/docs/troubleshooting.html" target="_blank" rel="external">troubleshooting</a> or you can ask me on <a href="https://github.com/hexojs/hexo/issues" target="_blank" rel="external">GitHub</a>.</p>
+<a id="more"></a>
+<h2 id="Quick-Start"><a href="#Quick-Start" class="headerlink" title="Quick Start"></a>Quick Start</h2><h3 id="Create-a-new-post"><a href="#Create-a-new-post" class="headerlink" title="Create a new post"></a>Create a new post</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><div class="line">1</div></pre></td><td class="code"><pre><div class="line">$ hexo new <span class="string">"My New Post"</span></div></pre></td></tr></table></figure>
+<p>More info: <a href="https://hexo.io/docs/writing.html" target="_blank" rel="external">Writing</a></p>
+<h3 id="Run-server"><a href="#Run-server" class="headerlink" title="Run server"></a>Run server</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><div class="line">1</div></pre></td><td class="code"><pre><div class="line">$ hexo server</div></pre></td></tr></table></figure>
+<p>More info: <a href="https://hexo.io/docs/server.html" target="_blank" rel="external">Server</a></p>
+<h3 id="Generate-static-files"><a href="#Generate-static-files" class="headerlink" title="Generate static files"></a>Generate static files</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><div class="line">1</div></pre></td><td class="code"><pre><div class="line">$ hexo generate</div></pre></td></tr></table></figure>
+<p>More info: <a href="https://hexo.io/docs/generating.html" target="_blank" rel="external">Generating</a></p>
+<h3 id="Deploy-to-remote-sites"><a href="#Deploy-to-remote-sites" class="headerlink" title="Deploy to remote sites"></a>Deploy to remote sites</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><div class="line">1</div></pre></td><td class="code"><pre><div class="line">$ hexo deploy</div></pre></td></tr></table></figure>
+<p>More info: <a href="https://hexo.io/docs/deployment.html" target="_blank" rel="external">Deployment</a></p>
+]]></content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;Welcome to &lt;a href=&quot;https://hexo.io/&quot; target=&quot;_blank&quot; rel=&quot;external&quot;&gt;Hexo&lt;/a&gt;! This is your very first post. Check &lt;a href=&quot;https://hexo.io/docs/&quot; target=&quot;_blank&quot; rel=&quot;external&quot;&gt;documentation&lt;/a&gt; for more info. If you get any problems when using Hexo, you can find the answer in &lt;a href=&quot;https://hexo.io/docs/troubleshooting.html&quot; target=&quot;_blank&quot; rel=&quot;external&quot;&gt;troubleshooting&lt;/a&gt; or you can ask me on &lt;a href=&quot;https://github.com/hexojs/hexo/issues&quot; target=&quot;_blank&quot; rel=&quot;external&quot;&gt;GitHub&lt;/a&gt;.&lt;/p&gt;
+    
+    </summary>
+    
+    
+  </entry>
+  
+</feed>
