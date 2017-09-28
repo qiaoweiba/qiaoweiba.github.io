@@ -426,7 +426,7 @@
                   <span class="post-meta-item-text">字数统计&#58;</span>
                 
                 <span title="字数统计">
-                  2,088
+                  2,099
                 </span>
               
 
@@ -464,8 +464,9 @@
 
       
         
-          <h1 id="HashMap源码分析"><a href="#HashMap源码分析" class="headerlink" title="HashMap源码分析"></a>HashMap源码分析</h1><p>Map作为一种典型的数据结构，是存储key-value键值对的集合类，<figure class="highlight plain"><figcaption><span>HashMap实现了Map接口，因此也继承了这一特性。下面我们来分析一下HashMap的主要源码和实现过程，以便对HashMap有更深入的理解。</span></figcaption><table><tr><td class="gutter"><pre><div class="line">1</div><div class="line">2</div><div class="line">3</div><div class="line">4</div><div class="line">5</div><div class="line">6</div></pre></td><td class="code"><pre><div class="line">在Java 8之前的实现中是用链表解决冲突的，在产生碰撞的情况下，进行get时，两步的时间复杂度是O(1)+O(n)。因此，当碰撞很厉害的时候n很大，O(n)的速度显然是影响速度的。因此在Java 8中，利用```红黑树```替换链表，这样复杂度就变成了O(1)+O(logn)了，这样在n很大的时候，能够比较理想的解决这个问题。</div><div class="line"></div><div class="line">## 声明</div><div class="line">	```java</div><div class="line">	public class HashMap&lt;K,V&gt; extends AbstractMap&lt;K,V&gt;</div><div class="line">    implements Map&lt;K,V&gt;, Cloneable, Serializable</div></pre></td></tr></table></figure></p>
-<p>HashMap实现了Map接口，继承了AbstractMap。AbstractMap实现了Map的主要抽象函数，从而减少了HashMap实现接口的工作量。<br>
+          <h1 id="HashMap源码分析"><a href="#HashMap源码分析" class="headerlink" title="HashMap源码分析"></a>HashMap源码分析</h1><p>Map作为一种典型的数据结构，是存储key-value键值对的集合类，key的值可以为null，但必须是唯一的。 HashMap实现了Map接口，因此也继承了这一特性。下面我们来分析一下HashMap的主要源码和实现过程，以便对HashMap有更深入的理解。<br>在Java 8之前的实现中是用链表解决冲突的，在产生碰撞的情况下，进行get时，两步的时间复杂度是O(1)+O(n)。因此，当碰撞很厉害的时候n很大，O(n)的速度显然是影响速度的。因此在Java 8中，利用红黑树替换链表，这样复杂度就变成了O(1)+O(logn)了，这样在n很大的时候，能够比较理想的解决这个问题。</p>
+<h2 id="声明"><a href="#声明" class="headerlink" title="声明"></a>声明</h2><pre><code><figure class="highlight java"><table><tr><td class="gutter"><pre><div class="line">1</div><div class="line">2</div></pre></td><td class="code"><pre><div class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">HashMap</span>&lt;<span class="title">K</span>,<span class="title">V</span>&gt; <span class="keyword">extends</span> <span class="title">AbstractMap</span>&lt;<span class="title">K</span>,<span class="title">V</span>&gt;</span></div><div class="line"><span class="class">   	<span class="keyword">implements</span> <span class="title">Map</span>&lt;<span class="title">K</span>,<span class="title">V</span>&gt;, <span class="title">Cloneable</span>, <span class="title">Serializable</span></span></div></pre></td></tr></table></figure>
+</code></pre><p>HashMap实现了Map接口，继承了AbstractMap。AbstractMap实现了Map的主要抽象函数，从而减少了HashMap实现接口的工作量。<br>
           <!--noindex-->
           <div class="post-button text-center">
             <a class="btn" href="/2017/08/28/1/#more" rel="contents">
