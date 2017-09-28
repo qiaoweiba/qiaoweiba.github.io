@@ -5,7 +5,7 @@
   <link href="/atom.xml" rel="self"/>
   
   <link href="http://qiaoweiba.com/"/>
-  <updated>2017-09-28T10:46:41.224Z</updated>
+  <updated>2017-09-28T14:19:02.699Z</updated>
   <id>http://qiaoweiba.com/</id>
   
   <author>
@@ -20,7 +20,7 @@
     <link href="http://qiaoweiba.com/2017/08/28/1/"/>
     <id>http://qiaoweiba.com/2017/08/28/1/</id>
     <published>2017-08-28T03:56:32.000Z</published>
-    <updated>2017-09-28T10:46:41.224Z</updated>
+    <updated>2017-09-28T14:19:02.699Z</updated>
     
     <content type="html"><![CDATA[<h1 id="HashMap源码分析"><a href="#HashMap源码分析" class="headerlink" title="HashMap源码分析"></a>HashMap源码分析</h1><p>Map作为一种典型的数据结构，是存储key-value键值对的集合类，key的值可以为null，但必须是唯一的。 HashMap实现了Map接口，因此也继承了这一特性。下面我们来分析一下HashMap的主要源码和实现过程，以便对HashMap有更深入的理解。<br>在Java 8之前的实现中是用链表解决冲突的，在产生碰撞的情况下，进行get时，两步的时间复杂度是O(1)+O(n)。因此，当碰撞很厉害的时候n很大，O(n)的速度显然是影响速度的。因此在Java 8中，利用红黑树替换链表，这样复杂度就变成了O(1)+O(logn)了，这样在n很大的时候，能够比较理想的解决这个问题。</p>
 <h2 id="声明"><a href="#声明" class="headerlink" title="声明"></a>声明</h2><pre><code><figure class="highlight java"><table><tr><td class="gutter"><pre><div class="line">1</div><div class="line">2</div></pre></td><td class="code"><pre><div class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">HashMap</span>&lt;<span class="title">K</span>,<span class="title">V</span>&gt; <span class="keyword">extends</span> <span class="title">AbstractMap</span>&lt;<span class="title">K</span>,<span class="title">V</span>&gt;</span></div><div class="line"><span class="class">   	<span class="keyword">implements</span> <span class="title">Map</span>&lt;<span class="title">K</span>,<span class="title">V</span>&gt;, <span class="title">Cloneable</span>, <span class="title">Serializable</span></span></div></pre></td></tr></table></figure>
@@ -69,6 +69,49 @@
     
     
       <category term="Java" scheme="http://qiaoweiba.com/tags/Java/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>设计模式之单例模式</title>
+    <link href="http://qiaoweiba.com/2017/08/28/1/"/>
+    <id>http://qiaoweiba.com/2017/08/28/1/</id>
+    <published>2017-08-28T03:56:32.000Z</published>
+    <updated>2017-09-28T14:52:13.187Z</updated>
+    
+    <content type="html"><![CDATA[<h2 id="概念"><a href="#概念" class="headerlink" title="概念"></a>概念</h2><p>单例模式确保某一个类只有一个实例，而且能自动实例化，并向整个系统提供这个实例。单例模式的作用域就是保证在整个应用程序的生命周期中，任何一个时刻，单例类的实例都只存在一个。例如，一台计算机上可以连接多台打印机，但是这个计算机上的打印程序只能有一个，这里就可以通过单例模式来避免两个打印机同时输出到打印机中，即在整个打印过程中只有一个打印程序的实例。<br><strong>单例模式需要保证系统中只有一个该类的实例，因此类的构造函数必须为私有，同时单例类必须提供一个全局访问点。</strong><br><a id="more"></a></p>
+<h2 id="实现方式"><a href="#实现方式" class="headerlink" title="实现方式"></a>实现方式</h2><p>1.饿汉式</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><div class="line">1</div><div class="line">2</div><div class="line">3</div><div class="line">4</div><div class="line">5</div><div class="line">6</div><div class="line">7</div><div class="line">8</div><div class="line">9</div><div class="line">10</div><div class="line">11</div></pre></td><td class="code"><pre><div class="line"><span class="comment">//饿汉式：在类加载时就会实例化该类的对象</span></div><div class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">Singleton01</span> </span>&#123;</div><div class="line">    <span class="keyword">private</span> <span class="keyword">static</span> Singleton01 instance = <span class="keyword">new</span> Singleton01();</div><div class="line"></div><div class="line">    <span class="function"><span class="keyword">private</span> <span class="title">Singleton01</span><span class="params">()</span> </span>&#123;</div><div class="line">    &#125;</div><div class="line"></div><div class="line">    <span class="function"><span class="keyword">public</span> <span class="keyword">static</span> Singleton01 <span class="title">getInstance</span><span class="params">()</span> </span>&#123;</div><div class="line">        <span class="keyword">return</span> instance;</div><div class="line">    &#125;</div><div class="line">&#125;</div></pre></td></tr></table></figure>
+<p>饿汉式由于在使用时之前对象已经创建好，因此，饿汉式实现的单例对象是线程安全的。</p>
+<p>2.懒汉式</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><div class="line">1</div><div class="line">2</div><div class="line">3</div><div class="line">4</div><div class="line">5</div><div class="line">6</div><div class="line">7</div><div class="line">8</div><div class="line">9</div><div class="line">10</div><div class="line">11</div><div class="line">12</div><div class="line">13</div><div class="line">14</div><div class="line">15</div><div class="line">16</div><div class="line">17</div><div class="line">18</div></pre></td><td class="code"><pre><div class="line"><span class="comment">//懒汉式：在类需要被使用的时候才实例化该类的对象</span></div><div class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">Singleton02</span> </span>&#123;</div><div class="line">    <span class="keyword">private</span> <span class="keyword">static</span> Singleton02 instance = <span class="keyword">null</span>;</div><div class="line"></div><div class="line">    <span class="function"><span class="keyword">private</span> <span class="title">Singleton02</span><span class="params">()</span> </span>&#123;</div><div class="line">    &#125;</div><div class="line">    </div><div class="line">    <span class="function"><span class="keyword">public</span> <span class="keyword">static</span> Singleton02 <span class="title">getInstance</span><span class="params">()</span> </span>&#123;</div><div class="line">        <span class="keyword">if</span> (instance == <span class="keyword">null</span>) &#123;</div><div class="line"> 			<span class="comment">//在这个地方,多线程的时候,可能A线程挂起， </span></div><div class="line">            <span class="comment">//此时instance属性还是null,那么B线程可能也判断条件为true而执行new操作。  </span></div><div class="line">            <span class="comment">//然后A线程可以执行的时候就会new个对象,线程B也会new个对象。  </span></div><div class="line">            <span class="comment">//就不能保证内存的唯一性，也即线程不安全。  </span></div><div class="line">            instance = <span class="keyword">new</span> Singleton02();</div><div class="line">        &#125;</div><div class="line">        <span class="keyword">return</span> instance;</div><div class="line">    &#125;</div><div class="line">&#125;</div></pre></td></tr></table></figure>
+<p>懒汉式由于在使用的时候才实例化该类的对象，当多线程时存在安全隐患。</p>
+<p>3.懒汉式–进阶版（双检查锁机制）</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><div class="line">1</div><div class="line">2</div><div class="line">3</div><div class="line">4</div><div class="line">5</div><div class="line">6</div><div class="line">7</div><div class="line">8</div><div class="line">9</div><div class="line">10</div><div class="line">11</div><div class="line">12</div><div class="line">13</div><div class="line">14</div><div class="line">15</div><div class="line">16</div><div class="line">17</div><div class="line">18</div><div class="line">19</div><div class="line">20</div><div class="line">21</div><div class="line">22</div><div class="line">23</div><div class="line">24</div><div class="line">25</div></pre></td><td class="code"><pre><div class="line"><span class="comment">//双检查锁机制：只有当instance为null即没有创建的时候，需要加锁操作。用加锁机制</span></div><div class="line"><span class="comment">//    确保在多线程下只创建一个实例，并且用两个if判断提高效率并确保只生成一个实例。</span></div><div class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">Singleton03</span> </span>&#123;</div><div class="line">    <span class="comment">//volatile保证其修饰的值在线程间的可见性</span></div><div class="line">    <span class="keyword">volatile</span> <span class="keyword">private</span> <span class="keyword">static</span> Singleton03 instance = <span class="keyword">null</span>;</div><div class="line"></div><div class="line">    <span class="function"><span class="keyword">private</span> <span class="title">Singleton03</span><span class="params">()</span> </span>&#123;</div><div class="line">    &#125;</div><div class="line"></div><div class="line">    <span class="function"><span class="keyword">public</span> <span class="keyword">static</span> Singleton03 <span class="title">getInstance</span><span class="params">()</span></span>&#123;</div><div class="line">        <span class="keyword">try</span> &#123;</div><div class="line">            <span class="keyword">if</span> (instance == <span class="keyword">null</span>) &#123;</div><div class="line">                <span class="keyword">synchronized</span> (Singleton03.class) &#123;</div><div class="line">                    <span class="comment">// 再次判断instance是否为空</span></div><div class="line">                    <span class="keyword">if</span> (instance == <span class="keyword">null</span>) &#123;</div><div class="line">                        instance = <span class="keyword">new</span> Singleton03();</div><div class="line">                    &#125;</div><div class="line">                &#125;</div><div class="line">            &#125;</div><div class="line">        &#125; <span class="keyword">catch</span> (Exception e) &#123;</div><div class="line">            e.printStackTrace();</div><div class="line">        &#125;</div><div class="line">        <span class="keyword">return</span> instance;</div><div class="line">    &#125;</div><div class="line">&#125;</div></pre></td></tr></table></figure>
+<p>使用双重锁机制即可以子多线程下安全的使用单例模式，但双检查锁机制实现起来比较复杂，容易出错，可以使用下面的解法。</p>
+<p>4.static代码块实现单例</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><div class="line">1</div><div class="line">2</div><div class="line">3</div><div class="line">4</div><div class="line">5</div><div class="line">6</div><div class="line">7</div><div class="line">8</div><div class="line">9</div><div class="line">10</div><div class="line">11</div><div class="line">12</div><div class="line">13</div><div class="line">14</div></pre></td><td class="code"><pre><div class="line"><span class="comment">//static代码块：由于static在类加载时只调用一次，因此可保证只生成一个实例。</span></div><div class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">Singleton04</span> </span>&#123;</div><div class="line">    <span class="keyword">private</span> <span class="keyword">static</span> Singleton04 instance = <span class="keyword">null</span>;</div><div class="line"></div><div class="line">    <span class="function"><span class="keyword">private</span> <span class="title">Singleton04</span><span class="params">()</span> </span>&#123;</div><div class="line">    &#125;</div><div class="line"></div><div class="line">    <span class="keyword">static</span> &#123;</div><div class="line">        instance = <span class="keyword">new</span> Singleton04();</div><div class="line">    &#125;</div><div class="line">    <span class="function"><span class="keyword">public</span> <span class="keyword">static</span> Singleton04 <span class="title">getInstance</span><span class="params">()</span> </span>&#123;</div><div class="line">        <span class="keyword">return</span> instance;</div><div class="line">    &#125;</div><div class="line">&#125;</div></pre></td></tr></table></figure>
+<p>静态代码块的方式实现单例类，虽然不会存在多线程安全问题，但是也会过早地创建实例，从而降低内存的使用效率。</p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>单例模式特点：</p>
+<blockquote>
+<p>1.任何情况下，单例类永远只有一个实例存在；<br>2.单例需要为整个系统提供一个唯一的实例。</p>
+</blockquote>
+<p>单例模式优点：</p>
+<blockquote>
+<p>1.减少内存的使用；<br>2.单例模式会阻止其他对象实例化其自己的单例对象的副本，从而确保所有对象都访问唯一实例；<br>3.由于类控制了实例化过程，所以类可以灵活地更改实例化过程。   </p>
+</blockquote>
+]]></content>
+    
+    <summary type="html">
+    
+      &lt;h2 id=&quot;概念&quot;&gt;&lt;a href=&quot;#概念&quot; class=&quot;headerlink&quot; title=&quot;概念&quot;&gt;&lt;/a&gt;概念&lt;/h2&gt;&lt;p&gt;单例模式确保某一个类只有一个实例，而且能自动实例化，并向整个系统提供这个实例。单例模式的作用域就是保证在整个应用程序的生命周期中，任何一个时刻，单例类的实例都只存在一个。例如，一台计算机上可以连接多台打印机，但是这个计算机上的打印程序只能有一个，这里就可以通过单例模式来避免两个打印机同时输出到打印机中，即在整个打印过程中只有一个打印程序的实例。&lt;br&gt;&lt;strong&gt;单例模式需要保证系统中只有一个该类的实例，因此类的构造函数必须为私有，同时单例类必须提供一个全局访问点。&lt;/strong&gt;&lt;br&gt;
+    
+    </summary>
+    
+      <category term="后台" scheme="http://qiaoweiba.com/categories/%E5%90%8E%E5%8F%B0/"/>
+    
+    
+      <category term="设计模式" scheme="http://qiaoweiba.com/tags/%E8%AE%BE%E8%AE%A1%E6%A8%A1%E5%BC%8F/"/>
     
   </entry>
   
