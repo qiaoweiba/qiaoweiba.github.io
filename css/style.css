@@ -212,6 +212,7 @@ a {
 }
 #container #mobile-nav #header {
   padding: 10px 0 0 0;
+/*.header-music {margin-top: 10px; }*/
 }
 #container #mobile-nav #header .profilepic {
   display: block;
